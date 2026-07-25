@@ -1,7 +1,18 @@
 name: onboard
 on:
   pull_request:
-    paths: ["manifest.yaml", "manifest.json", "platform/environments.yaml"]
+    paths:
+      - "manifest.yaml"
+      - "manifest.json"
+      - "platform/environments.yaml"
+      # Generated files are listed too, otherwise a PR that touches ONLY rendered
+      # HCL matches no path, no workflow runs, and the hand-edit guard below is
+      # unreachable — the edit sails through unchallenged.
+      - "*.tfcomponent.hcl"
+      - "*.tfdeploy.hcl"
+      - ".terraform-version"
+      - ".terraform.lock.hcl"
+      - ".stackforge-generated"
 
 permissions:
   contents: read
