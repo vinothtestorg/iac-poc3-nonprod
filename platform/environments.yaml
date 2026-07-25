@@ -1,0 +1,33 @@
+# CloudOps-owned. BU manifests name environments only; all wiring lives here.
+# A BU cannot reach a region, a VPC, or a RAM role that is not written down here.
+tfc_org: vinothkaruppusamy
+tfc_project: poc
+
+# Must equal the RAM OIDC provider's client_id, or AssumeRoleWithOIDC is rejected.
+identity_token_audience: alicloud.tfc.vinothkaruppusamy
+
+# Must stay compatible with the .terraform.lock.hcl that stack-forge ships,
+# otherwise Stacks fails configuration prep on a lock mismatch.
+provider_constraint: "~> 1.245"
+
+environments:
+  dev:
+    region: ap-southeast-1
+    account_id: "5698578488787527"
+    # PoC placeholders: the account has no VPC, and a create-plan never dereferences
+    # these. Real environments carry landing-zone IDs here.
+    vpc_id: vpc-0jl00000000000000poc3
+    vswitch_id: vsw-0jl00000000000000dev
+    zone_id: ap-southeast-1a
+    role_arn: acs:ram::5698578488787527:role/tfc-poc-app-dev
+    oidc_provider_arn: acs:ram::5698578488787527:oidc-provider/hcp-terraform
+  uat:
+    region: ap-southeast-1
+    account_id: "5698578488787527"
+    vpc_id: vpc-0jl00000000000000poc3
+    vswitch_id: vsw-0jl00000000000000uat
+    zone_id: ap-southeast-1b
+    # Reuses the dev role: the PoC has no dedicated uat role, and the trust policy
+    # is audience-only, so any sub from this TFC org is admitted.
+    role_arn: acs:ram::5698578488787527:role/tfc-poc-app-dev
+    oidc_provider_arn: acs:ram::5698578488787527:oidc-provider/hcp-terraform

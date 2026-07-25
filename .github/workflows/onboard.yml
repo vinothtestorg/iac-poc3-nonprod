@@ -1,0 +1,81 @@
+name: onboard
+on:
+  pull_request:
+    paths: ["manifest.yaml", "manifest.json", "platform/environments.yaml"]
+
+permissions:
+  contents: read
+
+jobs:
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      # The org caps the default GITHUB_TOKEN to read-only and forbids Actions from
+      # creating PRs, so pushes use a PAT. Nothing else here needs a credential.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.FORGE_TOKEN }}
+
+      - name: Block hand-edits of generated files
+        run: |
+          set -euo pipefail
+          git fetch -q origin "${{ github.base_ref }}"
+          CHANGED="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          echo "changed in PR:"; echo "$CHANGED" | sed 's/^/  /'
+          if [ ! -f .stackforge-generated ]; then
+            echo "no ledger present yet (first render) — nothing to guard"
+            exit 0
+          fi
+          OWNED="$(grep -vE '^#|^$' .stackforge-generated || true)"
+          TOUCHED="$(comm -12 <(echo "$CHANGED" | sort -u) <(echo "$OWNED" | sort -u))"
+          if [ -n "$TOUCHED" ]; then
+            if echo "$CHANGED" | grep -qE '^manifest\.(yaml|json)$'; then
+              echo "generated files touched alongside a manifest change — they will be re-rendered"
+            else
+              echo "::error::generated files were hand-edited with no manifest change:"
+              echo "$TOUCHED" | sed 's/^/  /'
+              echo "These files are rendered output. Change manifest.yaml instead."
+              exit 1
+            fi
+          fi
+
+      # Data-carrier action: the catalog arrives as the action's own payload, so
+      # there is no cross-repo checkout and no token. The channel ref is the
+      # governance rollout gate — nonprod soaks before prod is promoted onto it.
+      - name: Materialise the governed catalog
+        id: catalog
+        uses: vinothtestorg/alicloud-service-catalog@catalog-nonprod
+        with:
+          dest: _catalog
+
+      - name: Render Stacks configuration
+        uses: vinothtestorg/stack-forge@v1.0.0
+        with:
+          manifest: manifest.yaml
+          catalog: _catalog
+          env_config: platform/environments.yaml
+          out: .
+          tfc_org: vinothkaruppusamy
+          catalog_channel: ${{ steps.catalog.outputs.repository }}@${{ steps.catalog.outputs.ref }}
+          catalog_digest: ${{ steps.catalog.outputs.digest }}
+
+      # Committed into the PR on purpose: reviewers approve real HCL, not a manifest
+      # diff they have to imagine the output of. No [skip ci] — the re-run renders
+      # byte-identical output, finds nothing to commit, and stops. That is the
+      # determinism check running for free on every PR.
+      - name: Commit rendered configuration into the PR
+        run: |
+          set -euo pipefail
+          rm -rf _catalog
+          git config user.name  "stack-forge"
+          git config user.email "stack-forge@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "rendered configuration is already current — nothing to commit"
+          else
+            git --no-pager diff --cached --stat
+            git commit -m "stack-forge: render from manifest.yaml"
+            git push origin "HEAD:${{ github.head_ref }}"
+          fi

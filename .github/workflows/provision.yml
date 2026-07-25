@@ -1,0 +1,35 @@
+name: provision
+on:
+  push:
+    branches: [main]
+    paths:
+      - "*.tfcomponent.hcl"
+      - "*.tfdeploy.hcl"
+      - ".terraform-version"
+      - ".terraform.lock.hcl"
+  workflow_dispatch:
+
+# One repo, one stack — so no app detection, and nothing to race except two merges
+# landing at once.
+concurrency:
+  group: provision-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ensure-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure the TFC Stack exists
+        env:
+          TFE_TOKEN: ${{ secrets.TFE_TOKEN }}
+          TFC_ORG: vinothkaruppusamy
+          TFC_PROJECT_ID: ${{ vars.TFC_PROJECT_ID }}
+          OAUTH_TOKEN_ID: ${{ vars.TFC_OAUTH_TOKEN_ID }}
+          STACK_NAME: ${{ github.event.repository.name }}
+          REPO: ${{ github.repository }}
+          BRANCH: main
+        run: bash platform/ensure_stack.sh
