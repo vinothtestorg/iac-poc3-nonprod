@@ -1,0 +1,17 @@
+apiVersion: platform.group.example/v1
+kind: AppClaim
+metadata:
+  appId: poc3
+  bu: gi
+  costCenter: CC1234
+  dataClassification: internal
+  environments: [dev, uat]
+components:
+  - type: oss
+    claimSchema: oss/v1
+    name: claims-docs
+    size: medium
+  - type: redis
+    claimSchema: redis/v1
+    name: claims-cache
+    size: small
