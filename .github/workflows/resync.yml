@@ -1,0 +1,68 @@
+name: resync
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"
+
+# Closes the gap that onboard.yml leaves: onboard only fires on a manifest PR, so a
+# Governance change that advances the catalog channel would otherwise never reach
+# this repo. This re-renders against the channel's current content and, if the
+# output moved, opens a PR — so a sizing-map or module-version bump lands as a
+# reviewable HCL diff without any BU touching their manifest.
+#
+# NOTE: the channel ref below is duplicated from onboard.yml on purpose. GitHub
+# forbids expressions in `uses:`, so it cannot be read from a repo variable.
+
+permissions:
+  contents: read
+
+jobs:
+  resync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.FORGE_TOKEN }}
+
+      - name: Materialise the governed catalog
+        id: catalog
+        uses: vinothtestorg/alicloud-service-catalog@catalog-nonprod
+        with:
+          dest: _catalog
+
+      - name: Render Stacks configuration
+        uses: vinothtestorg/stack-forge@v1.0.0
+        with:
+          manifest: manifest.yaml
+          catalog: _catalog
+          env_config: platform/environments.yaml
+          out: .
+          tfc_org: vinothkaruppusamy
+          catalog_channel: ${{ steps.catalog.outputs.repository }}@${{ steps.catalog.outputs.ref }}
+          catalog_digest: ${{ steps.catalog.outputs.digest }}
+
+      - name: Open a PR if the channel moved the output
+        env:
+          GH_TOKEN: ${{ secrets.FORGE_TOKEN }}
+          DIGEST: ${{ steps.catalog.outputs.digest }}
+        run: |
+          set -euo pipefail
+          rm -rf _catalog
+          if git diff --quiet; then
+            echo "catalog channel produces identical output — nothing to resync"
+            exit 0
+          fi
+          BRANCH="resync/catalog-${DIGEST:0:12}"
+          git config user.name  "stack-forge"
+          git config user.email "stack-forge@users.noreply.github.com"
+          git checkout -q -b "$BRANCH"
+          git add -A
+          git commit -qm "stack-forge: resync against catalog ${DIGEST:0:12}"
+          git push -q -f origin "HEAD:$BRANCH"
+          git --no-pager diff --stat main.."$BRANCH"
+          gh pr create --base main --head "$BRANCH" \
+            --title "resync: catalog channel moved" \
+            --body "Governance advanced the catalog channel this repo pins. Re-rendered output follows; the manifest is unchanged." \
+            2>/dev/null || echo "PR already open for $BRANCH"
