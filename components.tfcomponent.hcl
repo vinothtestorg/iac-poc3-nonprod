@@ -9,7 +9,7 @@ component "claims_docs" {
   inputs = {
     bucket_name    = "claims-docs-${var.env}-${var.account_id}"
     environment    = var.env
-    lifecycle_days = 14
+    lifecycle_days = 3650
     force_destroy  = false
   }
   providers = {
