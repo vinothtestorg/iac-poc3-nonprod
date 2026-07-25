@@ -1,0 +1,7 @@
+# Files owned by stack-forge. Deleted and re-rendered on every run.
+.terraform-version
+.terraform.lock.hcl
+components.tfcomponent.hcl
+deployments.tfdeploy.hcl
+providers.tfcomponent.hcl
+variables.tfcomponent.hcl
